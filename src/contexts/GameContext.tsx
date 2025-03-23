@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 
@@ -31,7 +30,7 @@ type GameContextType = {
   selectedColor: string;
   setSelectedColor: (color: string) => void;
   selectWord: (word: string) => void;
-  submitGuess: (guess: string) => void;
+  submitGuess: (guess: string) => boolean;
   startGame: () => void;
   updatePlayerName: (name: string) => void;
   resetGame: () => void;
@@ -263,7 +262,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Handle guess submission
   const submitGuess = useCallback((guess: string) => {
-    if (gameState.phase !== 'drawing' || isDrawer) return;
+    if (gameState.phase !== 'drawing' || isDrawer) return false;
     
     const normalizedGuess = guess.trim().toLowerCase();
     const normalizedWord = gameState.currentWord.toLowerCase();
@@ -272,9 +271,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Correct guess
       handleCorrectGuess(playerId);
       toast.success("Correct! You guessed the word!");
+      return true;
     } else {
       // Incorrect guess
       toast.error("Incorrect guess, try again!");
+      return false;
     }
   }, [gameState.phase, gameState.currentWord, isDrawer, playerId]);
 

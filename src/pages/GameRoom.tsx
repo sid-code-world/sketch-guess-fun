@@ -8,6 +8,7 @@ import GameControls from "@/components/GameControls";
 import ColorPalette from "@/components/ColorPalette";
 import WordDisplay from "@/components/WordDisplay";
 import PlayerList from "@/components/PlayerList";
+import ChatBox from "@/components/ChatBox";
 import { toast } from "sonner";
 
 const GameRoom = () => {
@@ -31,7 +32,7 @@ const GameRoom = () => {
   
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/30 px-4 py-6 md:py-12">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl md:text-3xl font-bold">Sketch Guess</h1>
@@ -99,14 +100,14 @@ const GameRoom = () => {
         </div>
         
         {/* Main game content */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left sidebar - player list */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-2">
             <PlayerList />
           </div>
           
           {/* Main content - canvas and controls */}
-          <div className="lg:col-span-3 flex flex-col gap-4">
+          <div className="lg:col-span-7 flex flex-col gap-4">
             {/* Word to guess display */}
             <WordDisplay />
             
@@ -122,6 +123,11 @@ const GameRoom = () => {
             <div className="mt-2">
               <ColorPalette />
             </div>
+          </div>
+          
+          {/* Right sidebar - chat */}
+          <div className="lg:col-span-3 h-[500px]">
+            <ChatBox />
           </div>
         </div>
         
