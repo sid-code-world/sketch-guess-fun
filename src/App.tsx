@@ -13,9 +13,9 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <BrowserRouter>
-        <GameProvider>
+    <BrowserRouter>
+      <GameProvider>
+        <TooltipProvider>
           <Toaster />
           <Sonner />
           <Routes>
@@ -24,9 +24,9 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </GameProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+        </TooltipProvider>
+      </GameProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 
