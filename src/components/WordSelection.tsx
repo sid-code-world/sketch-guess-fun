@@ -12,6 +12,7 @@ export const WordSelection = () => {
     if (gameState.phase === 'word-selection' && isDrawer) {
       const options = getRandomWordSelection(3);
       setWordOptions(options);
+      console.log("Word options generated:", options);
     }
   }, [gameState.phase, isDrawer]);
   
@@ -19,6 +20,11 @@ export const WordSelection = () => {
   if (gameState.phase !== 'word-selection' || !isDrawer) {
     return null;
   }
+  
+  const handleWordSelection = (word: string) => {
+    console.log("Word selected:", word);
+    selectWord(word);
+  };
   
   return (
     <div className="fixed inset-0 flex items-center justify-center z-10 bg-black/50 backdrop-blur-sm">
@@ -32,7 +38,7 @@ export const WordSelection = () => {
             <button
               key={word}
               className="py-4 px-6 bg-white/20 hover:bg-white/40 font-medium rounded-lg text-lg button-transition"
-              onClick={() => selectWord(word)}
+              onClick={() => handleWordSelection(word)}
             >
               {word}
             </button>
