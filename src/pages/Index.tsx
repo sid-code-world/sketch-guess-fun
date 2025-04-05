@@ -1,13 +1,31 @@
 
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useState } from "react";
+import { useGame } from "@/contexts/GameContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { createRoom, joinRoom } = useGame();
+  const [roomCode, setRoomCode] = useState("");
+  const [showJoinForm, setShowJoinForm] = useState(false);
   
-  // Handle play button click
-  const handlePlayClick = () => {
-    navigate("/game");
+  // Handle play button click (create new game)
+  const handleCreateGame = () => {
+    createRoom();
+  };
+
+  // Handle join existing game
+  const handleJoinGame = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (roomCode.trim()) {
+      joinRoom(roomCode.trim());
+    } else {
+      toast.error("Please enter a valid room code");
+    }
   };
 
   return (
@@ -27,14 +45,47 @@ const Index = () => {
             Draw and guess words in this fun, minimalist drawing game inspired by classic online drawing games.
           </p>
           
-          <motion.button
-            onClick={handlePlayClick}
-            className="px-8 py-4 bg-primary text-primary-foreground rounded-xl font-medium text-lg hover:opacity-90 transition-all duration-300 shadow-md hover:shadow-lg"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            Play Now
-          </motion.button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+            <motion.button
+              onClick={handleCreateGame}
+              className="px-8 py-4 bg-primary text-primary-foreground rounded-xl font-medium text-lg hover:opacity-90 transition-all duration-300 shadow-md hover:shadow-lg w-full sm:w-auto"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              Create New Game
+            </motion.button>
+
+            <motion.button
+              onClick={() => setShowJoinForm(!showJoinForm)}
+              className="px-8 py-4 bg-secondary text-secondary-foreground rounded-xl font-medium text-lg hover:opacity-90 transition-all duration-300 shadow-md hover:shadow-lg w-full sm:w-auto"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              Join Existing Game
+            </motion.button>
+          </div>
+
+          {showJoinForm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-8"
+            >
+              <form onSubmit={handleJoinGame} className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+                <Input
+                  type="text"
+                  placeholder="Enter room code"
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="submit" variant="default">
+                  Join
+                </Button>
+              </form>
+            </motion.div>
+          )}
         </motion.div>
         
         <motion.div

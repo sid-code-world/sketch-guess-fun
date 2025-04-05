@@ -10,9 +10,12 @@ import WordDisplay from "@/components/WordDisplay";
 import PlayerList from "@/components/PlayerList";
 import ChatBox from "@/components/ChatBox";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Share2, Copy, Users } from "lucide-react";
+import { getRoomUrl } from "@/utils/roomUtils";
 
 const GameRoom = () => {
-  const { gameState, startGame, resetGame } = useGame();
+  const { gameState, startGame, resetGame, copyRoomLink, isConnected } = useGame();
   const navigate = useNavigate();
   
   // Handle navigation back to home
@@ -35,21 +38,44 @@ const GameRoom = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold">Sketch Guess</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl md:text-3xl font-bold">Sketch Guess</h1>
+            
+            {gameState.roomId && (
+              <div className="flex items-center gap-2 rounded-full bg-secondary/40 px-3 py-1 text-sm">
+                <Users size={16} />
+                <span>Room: {gameState.roomId}</span>
+              </div>
+            )}
+          </div>
           
           <div className="flex gap-3">
-            {/* Start game button (only in lobby) */}
-            {gameState.phase === 'lobby' && (
+            {/* Room sharing options */}
+            {gameState.roomId && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex items-center gap-2"
+                onClick={copyRoomLink}
+              >
+                <Copy size={16} />
+                Share Link
+              </Button>
+            )}
+            
+            {/* Start game button (only in lobby for host) */}
+            {gameState.phase === 'lobby' && ((gameState.isHost && isConnected) || !gameState.roomId) && (
               <button
                 onClick={startGame}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 button-transition"
+                disabled={!isConnected && gameState.roomId !== null}
               >
                 Start Game
               </button>
             )}
             
             {/* Reset game button (only after game has started) */}
-            {gameState.phase !== 'lobby' && (
+            {gameState.phase !== 'lobby' && gameState.isHost && (
               <button
                 onClick={resetGame}
                 className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg font-medium hover:bg-secondary/80 button-transition"
@@ -72,7 +98,23 @@ const GameRoom = () => {
         <div className="mb-6 text-center">
           {gameState.phase === 'lobby' && (
             <div className="text-lg animate-pulse-subtle">
-              Waiting to start the game...
+              {gameState.roomId ? (
+                gameState.isHost ? (
+                  isConnected ? (
+                    <>Waiting for players to join... <span className="text-primary">Share the room code: {gameState.roomId}</span></>
+                  ) : (
+                    <>Connecting to game server...</>
+                  )
+                ) : (
+                  isConnected ? (
+                    <>Waiting for the host to start the game...</>
+                  ) : (
+                    <>Joining game room...</>
+                  )
+                )
+              ) : (
+                <>Waiting to start the game...</>
+              )}
             </div>
           )}
           {gameState.phase === 'word-selection' && !gameState.currentDrawer?.isComputer && (
