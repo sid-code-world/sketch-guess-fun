@@ -1,8 +1,8 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useParams, useNavigate } from 'react-router-dom';
-import { generateRoomId } from '@/utils/roomUtils';
+import { generateRoomId, getRoomUrl } from '@/utils/roomUtils';
+import { createWebSocketConnection, sendWebSocketMessage, WebSocketEventType, WebSocketMessage } from '@/utils/websocketUtils';
 
 // Define types
 export type GamePhase = 'lobby' | 'word-selection' | 'drawing' | 'round-end' | 'game-end';
@@ -73,6 +73,110 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check if current user is the drawer
   const isDrawer = gameState.currentDrawer?.id === playerId;
 
+  // WebSocket event handler
+  const handleWebSocketMessage = useCallback((event: MessageEvent) => {
+    try {
+      const message: WebSocketMessage = JSON.parse(event.data);
+      console.log("Received WebSocket message:", message);
+
+      switch(message.type) {
+        case 'player_joined':
+          if (message.payload?.players) {
+            setGameState(prev => ({
+              ...prev,
+              players: message.payload.players
+            }));
+            toast.info(`${message.payload.newPlayer.name} joined the game!`);
+          }
+          break;
+          
+        case 'start_game':
+          if (message.payload?.gameState) {
+            setGameState(prev => ({
+              ...prev,
+              phase: message.payload.gameState.phase,
+              players: message.payload.gameState.players,
+              currentDrawer: message.payload.gameState.currentDrawer,
+              roundNumber: message.payload.gameState.roundNumber,
+            }));
+            toast.info("Game started! Select a word to draw.");
+          }
+          break;
+          
+        case 'select_word':
+          if (message.payload?.word) {
+            const word = message.payload.word;
+            const displayWord = word
+              .split('')
+              .map(char => char === ' ' ? ' ' : '_')
+              .join('');
+              
+            setGameState(prev => ({
+              ...prev,
+              phase: 'drawing',
+              currentWord: word,
+              displayWord,
+              timeRemaining: prev.roundTime,
+            }));
+            
+            if (!isDrawer) {
+              toast.info(`${gameState.currentDrawer?.name} is drawing now! Try to guess the word.`);
+            }
+          }
+          break;
+          
+        case 'correct_guess':
+          if (message.payload?.playerId && message.payload?.players) {
+            setGameState(prev => ({
+              ...prev,
+              players: message.payload.players
+            }));
+            
+            const playerName = message.payload.players.find((p: Player) => p.id === message.payload.playerId)?.name;
+            if (playerName) {
+              toast.success(`${playerName} guessed the word!`);
+            }
+          }
+          break;
+          
+        case 'round_end':
+          if (message.payload?.gameState) {
+            setGameState(prev => ({
+              ...prev,
+              phase: message.payload.gameState.phase,
+              displayWord: message.payload.gameState.currentWord,
+            }));
+            toast.info(`Round ended! The word was: ${message.payload.gameState.currentWord}`);
+          }
+          break;
+          
+        case 'game_end':
+          if (message.payload?.gameState) {
+            setGameState(prev => ({
+              ...prev,
+              phase: 'game-end',
+              displayWord: message.payload.gameState.currentWord,
+              players: message.payload.gameState.players,
+            }));
+            
+            // Find winner
+            const winner = [...message.payload.gameState.players].sort((a, b) => b.score - a.score)[0];
+            toast.success(`Game Over! ${winner.name} wins with ${winner.score} points!`);
+          }
+          break;
+          
+        case 'error':
+          toast.error(message.payload?.message || "An error occurred");
+          break;
+          
+        default:
+          console.log("Unhandled WebSocket message type:", message.type);
+      }
+    } catch (error) {
+      console.error("Error processing WebSocket message:", error);
+    }
+  }, [isDrawer, gameState.currentDrawer?.name]);
+
   // Initialize the game with the player
   useEffect(() => {
     // If we have a roomId in the URL, try to join that room
@@ -92,48 +196,64 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [urlRoomId]);
 
-  // Mock websocket connection for multiplayer
-  const setupWebSocket = useCallback((roomId: string) => {
-    // In a real app, we'd connect to a real WebSocket server
-    console.log(`Setting up mock WebSocket for room: ${roomId}`);
+  // Setup WebSocket connection
+  const setupWebSocket = useCallback(() => {
+    // Close existing connection if any
+    if (socketRef.current) {
+      socketRef.current.close();
+    }
     
-    // Simulate connection establishment
-    setTimeout(() => {
-      console.log("Connected to game server!");
+    console.log("Setting up WebSocket connection");
+    const ws = createWebSocketConnection();
+    socketRef.current = ws;
+    
+    // Setup event handlers
+    ws.onopen = () => {
+      console.log("WebSocket connection established");
       setIsConnected(true);
-      
-      // If we're joining an existing room, simulate getting current players
-      if (urlRoomId && urlRoomId === roomId) {
-        // Simulate existing players in the room
-        const mockPlayers: Player[] = [
-          { id: playerId, name: 'You', score: 0, isDrawing: false },
-          { id: 'player-5678', name: 'Guest 1', score: 0, isDrawing: false },
-          { id: 'player-9012', name: 'Guest 2', score: 0, isDrawing: false },
-        ];
-        
-        setGameState(prev => ({
-          ...prev,
-          players: mockPlayers,
-          isHost: false,
-        }));
-        
-        toast.success("Joined the game room!");
-      } else {
-        // We created the room, so we're the host
-        setGameState(prev => ({
-          ...prev,
-          isHost: true,
-        }));
-        toast.success("Game room created! Share the link with friends to play together.");
-      }
-    }, 1000);
+    };
+    
+    ws.onmessage = handleWebSocketMessage;
+    
+    ws.onclose = () => {
+      console.log("WebSocket connection closed");
+      setIsConnected(false);
+      toast.error("Disconnected from game server");
+    };
+    
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setIsConnected(false);
+      toast.error("Error connecting to game server");
+    };
     
     // Cleanup function
     return () => {
-      console.log("Disconnecting WebSocket");
+      console.log("Cleaning up WebSocket connection");
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
       setIsConnected(false);
     };
-  }, [playerId, urlRoomId]);
+  }, [handleWebSocketMessage]);
+
+  // Setup WebSocket on component mount
+  useEffect(() => {
+    const cleanup = setupWebSocket();
+    
+    // Heartbeat to keep WebSocket connection alive
+    const heartbeatInterval = setInterval(() => {
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({ type: 'heartbeat' }));
+      }
+    }, 30000); // Every 30 seconds
+    
+    return () => {
+      cleanup();
+      clearInterval(heartbeatInterval);
+    };
+  }, [setupWebSocket]);
 
   // Create a new room
   const createRoom = useCallback(() => {
@@ -145,14 +265,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isHost: true,
     }));
     
-    // Setup WebSocket connection
-    const cleanupWs = setupWebSocket(roomId);
+    // Send create room message to WebSocket server
+    sendWebSocketMessage(socketRef.current, 'create_room', roomId, {
+      playerId,
+      playerName: 'You',
+    });
     
     // Navigate to the room URL
     navigate(`/game/${roomId}`);
     
     return roomId;
-  }, [navigate, setupWebSocket]);
+  }, [navigate, playerId]);
 
   // Join an existing room
   const joinRoom = useCallback((roomId: string) => {
@@ -162,19 +285,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isHost: false,
     }));
     
-    // Setup WebSocket connection
-    const cleanupWs = setupWebSocket(roomId);
+    // Send join room message to WebSocket server
+    sendWebSocketMessage(socketRef.current, 'join_room', roomId, {
+      playerId,
+      playerName: 'You',
+    });
     
     // Navigate to the room URL if we're not already there
     if (!urlRoomId) {
       navigate(`/game/${roomId}`);
     }
-  }, [navigate, setupWebSocket, urlRoomId]);
+  }, [navigate, playerId, urlRoomId]);
 
   // Copy room link to clipboard
   const copyRoomLink = useCallback(() => {
     if (gameState.roomId) {
-      const url = `${window.location.origin}/game/${gameState.roomId}`;
+      const url = getRoomUrl(gameState.roomId);
       navigator.clipboard.writeText(url);
       toast.success("Room link copied to clipboard!");
     }
@@ -229,6 +355,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Handle round end
   const handleRoundEnd = useCallback(() => {
+    // Send round end message to WebSocket server
+    sendWebSocketMessage(socketRef.current, 'round_end', gameState.roomId, {
+      gameState
+    });
+    
     setGameState(prev => {
       // Reveal the word
       toast.info(`The word was: ${prev.currentWord}`);
@@ -237,6 +368,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Game ended
         const winner = [...prev.players].sort((a, b) => b.score - a.score)[0];
         toast.success(`Game Over! ${winner.name} wins with ${winner.score} points!`);
+        
+        // Send game end message to WebSocket server
+        sendWebSocketMessage(socketRef.current, 'game_end', prev.roomId, {
+          gameState: prev
+        });
         
         return {
           ...prev,
@@ -279,51 +415,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return prev;
       });
     }, 5000);
-  }, []);
-
-  // Simulate bot guesses
-  useEffect(() => {
-    if (gameState.phase === 'drawing' && !isDrawer) {
-      const botGuessTime = Math.random() * 20000 + 15000; // Between 15-35 seconds
-      
-      const botTimer = setTimeout(() => {
-        const randomBot = gameState.players.find(p => p.isComputer && !p.isDrawing);
-        
-        if (randomBot) {
-          // Bot guesses correctly
-          const correctGuess = Math.random() > 0.5; // 50% chance for correct guess
-          
-          if (correctGuess) {
-            // Simulate a correct bot guess
-            handleCorrectGuess(randomBot.id);
-            toast.success(`${randomBot.name} guessed the word!`);
-          }
-        }
-      }, botGuessTime);
-      
-      return () => clearTimeout(botTimer);
-    }
-  }, [gameState.phase, isDrawer]);
-
-  // Handle correct guess
-  const handleCorrectGuess = (guesserId: string) => {
-    setGameState(prev => {
-      // Award points to both guesser and drawer
-      const updatedPlayers = prev.players.map(player => {
-        if (player.id === guesserId) {
-          return { ...player, score: player.score + 100 }; // Guesser gets 100 points
-        } else if (player.isDrawing) {
-          return { ...player, score: player.score + 50 }; // Drawer gets 50 points
-        }
-        return player;
-      });
-      
-      return {
-        ...prev,
-        players: updatedPlayers
-      };
-    });
-  };
+  }, [gameState]);
 
   // Start the game
   const startGame = useCallback(() => {
@@ -364,13 +456,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isDrawing: index === randomIndex
       }));
       
-      return {
+      const updatedState = {
         ...prev,
         phase: 'word-selection',
         players: updatedPlayers,
         currentDrawer: updatedPlayers[randomIndex],
         roundNumber: 1,
       };
+      
+      // Send start game message to WebSocket server
+      sendWebSocketMessage(socketRef.current, 'start_game', prev.roomId, {
+        gameState: updatedState
+      });
+      
+      return updatedState;
     });
     
     toast.info("Game started! Select a word to draw.");
@@ -386,6 +485,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .map(char => char === ' ' ? ' ' : '_')
       .join('');
     
+    // Send select word message to WebSocket server
+    sendWebSocketMessage(socketRef.current, 'select_word', gameState.roomId, {
+      word,
+      playerId
+    });
+    
     setGameState(prev => ({
       ...prev,
       phase: 'drawing',
@@ -395,7 +500,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
     
     toast.info("Start drawing! Others will try to guess your word.");
-  }, [gameState.phase]);
+  }, [gameState.phase, gameState.roomId, playerId]);
 
   // Handle guess submission
   const submitGuess = useCallback((guess: string) => {
@@ -404,9 +509,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const normalizedGuess = guess.trim().toLowerCase();
     const normalizedWord = gameState.currentWord.toLowerCase();
     
+    // Send guess message to WebSocket server
+    sendWebSocketMessage(socketRef.current, 'guess', gameState.roomId, {
+      guess: normalizedGuess,
+      playerId
+    });
+    
     if (normalizedGuess === normalizedWord) {
-      // Correct guess
-      handleCorrectGuess(playerId);
+      // Correct guess - update will come from server
       toast.success("Correct! You guessed the word!");
       return true;
     } else {
@@ -414,11 +524,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.error("Incorrect guess, try again!");
       return false;
     }
-  }, [gameState.phase, gameState.currentWord, isDrawer, playerId]);
+  }, [gameState.phase, gameState.currentWord, isDrawer, gameState.roomId, playerId]);
 
   // Update player name
   const updatePlayerName = useCallback((name: string) => {
     if (!name.trim()) return;
+    
+    // Send update player name message to WebSocket server
+    sendWebSocketMessage(socketRef.current, 'update_player_name', gameState.roomId, {
+      playerId,
+      name
+    });
     
     setGameState(prev => ({
       ...prev,
@@ -428,7 +544,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
     
     toast.success(`Name updated to ${name}!`);
-  }, [playerId]);
+  }, [playerId, gameState.roomId]);
 
   // Reset game
   const resetGame = useCallback(() => {
@@ -438,6 +554,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isDrawing: false
     }));
     
+    // Send reset game message to WebSocket server
+    sendWebSocketMessage(socketRef.current, 'reset_game', gameState.roomId, {
+      playerId
+    });
+    
     setGameState({
       ...defaultGameState,
       players,
@@ -446,7 +567,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     
     toast.info("Game reset! Ready to start a new game.");
-  }, [gameState.players, gameState.roomId, gameState.isHost]);
+  }, [gameState.players, gameState.roomId, gameState.isHost, playerId]);
 
   return (
     <GameContext.Provider
