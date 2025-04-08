@@ -111,7 +111,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
               
             setGameState(prev => ({
               ...prev,
-              phase: 'drawing',
+              phase: 'drawing' as GamePhase,
               currentWord: word,
               displayWord,
               timeRemaining: prev.roundTime,
@@ -421,7 +421,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const updatedState = {
         ...prev,
-        phase: 'word-selection',
+        phase: 'word-selection' as GamePhase,
         players: updatedPlayers,
         currentDrawer: updatedPlayers[randomIndex],
         roundNumber: 1,
@@ -452,7 +452,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setGameState(prev => ({
       ...prev,
-      phase: 'drawing',
+      phase: 'drawing' as GamePhase,
       currentWord: word,
       displayWord,
       timeRemaining: prev.roundTime,
