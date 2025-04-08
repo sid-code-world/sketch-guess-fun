@@ -30,4 +30,3 @@ export const sendClearCanvas = (
   
   sendWebSocketMessage(ws, 'clear_canvas', roomId, {});
 };
-
