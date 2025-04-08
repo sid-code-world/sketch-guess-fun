@@ -70,10 +70,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { roomId: urlRoomId } = useParams<{ roomId?: string }>();
   const socketRef = useRef<WebSocket | null>(null);
   
-  // Check if current user is the drawer
   const isDrawer = gameState.currentDrawer?.id === playerId;
 
-  // WebSocket event handler
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
     try {
       const message: WebSocketMessage = JSON.parse(event.data);
@@ -94,7 +92,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (message.payload?.gameState) {
             setGameState(prev => ({
               ...prev,
-              phase: message.payload.gameState.phase,
+              phase: message.payload.gameState.phase as GamePhase,
               players: message.payload.gameState.players,
               currentDrawer: message.payload.gameState.currentDrawer,
               roundNumber: message.payload.gameState.roundNumber,
@@ -143,7 +141,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (message.payload?.gameState) {
             setGameState(prev => ({
               ...prev,
-              phase: message.payload.gameState.phase,
+              phase: message.payload.gameState.phase as GamePhase,
               displayWord: message.payload.gameState.currentWord,
             }));
             toast.info(`Round ended! The word was: ${message.payload.gameState.currentWord}`);
@@ -154,12 +152,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (message.payload?.gameState) {
             setGameState(prev => ({
               ...prev,
-              phase: 'game-end',
+              phase: 'game-end' as GamePhase,
               displayWord: message.payload.gameState.currentWord,
               players: message.payload.gameState.players,
             }));
             
-            // Find winner
             const winner = [...message.payload.gameState.players].sort((a, b) => b.score - a.score)[0];
             toast.success(`Game Over! ${winner.name} wins with ${winner.score} points!`);
           }
@@ -177,14 +174,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isDrawer, gameState.currentDrawer?.name]);
 
-  // Initialize the game with the player
   useEffect(() => {
-    // If we have a roomId in the URL, try to join that room
     if (urlRoomId && !gameState.roomId) {
       console.log(`Trying to join room from URL: ${urlRoomId}`);
       joinRoom(urlRoomId);
     } else if (!gameState.players.length) {
-      // Just initialize with the current player if no room to join
       const initialPlayers: Player[] = [
         { id: playerId, name: 'You', score: 0, isDrawing: false },
       ];
@@ -196,9 +190,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [urlRoomId]);
 
-  // Setup WebSocket connection
   const setupWebSocket = useCallback(() => {
-    // Close existing connection if any
     if (socketRef.current) {
       socketRef.current.close();
     }
@@ -207,7 +199,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const ws = createWebSocketConnection();
     socketRef.current = ws;
     
-    // Setup event handlers
     ws.onopen = () => {
       console.log("WebSocket connection established");
       setIsConnected(true);
@@ -227,7 +218,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.error("Error connecting to game server");
     };
     
-    // Cleanup function
     return () => {
       console.log("Cleaning up WebSocket connection");
       if (socketRef.current) {
@@ -238,16 +228,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [handleWebSocketMessage]);
 
-  // Setup WebSocket on component mount
   useEffect(() => {
     const cleanup = setupWebSocket();
     
-    // Heartbeat to keep WebSocket connection alive
     const heartbeatInterval = setInterval(() => {
       if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({ type: 'heartbeat' }));
       }
-    }, 30000); // Every 30 seconds
+    }, 30000);
     
     return () => {
       cleanup();
@@ -255,7 +243,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [setupWebSocket]);
 
-  // Create a new room
   const createRoom = useCallback(() => {
     const roomId = generateRoomId();
     
@@ -265,19 +252,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isHost: true,
     }));
     
-    // Send create room message to WebSocket server
     sendWebSocketMessage(socketRef.current, 'create_room', roomId, {
       playerId,
       playerName: 'You',
     });
     
-    // Navigate to the room URL
     navigate(`/game/${roomId}`);
     
     return roomId;
   }, [navigate, playerId]);
 
-  // Join an existing room
   const joinRoom = useCallback((roomId: string) => {
     setGameState(prev => ({
       ...prev,
@@ -285,19 +269,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isHost: false,
     }));
     
-    // Send join room message to WebSocket server
     sendWebSocketMessage(socketRef.current, 'join_room', roomId, {
       playerId,
       playerName: 'You',
     });
     
-    // Navigate to the room URL if we're not already there
     if (!urlRoomId) {
       navigate(`/game/${roomId}`);
     }
   }, [navigate, playerId, urlRoomId]);
 
-  // Copy room link to clipboard
   const copyRoomLink = useCallback(() => {
     if (gameState.roomId) {
       const url = getRoomUrl(gameState.roomId);
@@ -306,23 +287,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [gameState.roomId]);
 
-  // Timer logic
   useEffect(() => {
     if (gameState.phase === 'drawing' && gameState.timeRemaining > 0) {
       const timer = setTimeout(() => {
         setGameState(prev => {
-          // Reveal more letters as time passes
           const revealLetterThresholds = [
-            prev.roundTime * 0.7, // reveal first letter at 70% time remaining
-            prev.roundTime * 0.5, // reveal another at 50%
-            prev.roundTime * 0.3, // reveal another at 30%
+            prev.roundTime * 0.7,
+            prev.roundTime * 0.5,
+            prev.roundTime * 0.3,
           ];
           
           let newDisplayWord = prev.displayWord;
           
-          // Check if we need to reveal a letter
           if (revealLetterThresholds.includes(prev.timeRemaining - 1)) {
-            // Find a masked letter to reveal
             const maskedIndices = [];
             for (let i = 0; i < prev.currentWord.length; i++) {
               if (prev.displayWord[i] === '_' && prev.currentWord[i] !== ' ') {
@@ -348,54 +325,45 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       return () => clearTimeout(timer);
     } else if (gameState.phase === 'drawing' && gameState.timeRemaining === 0) {
-      // Round ended due to time
       handleRoundEnd();
     }
   }, [gameState.phase, gameState.timeRemaining]);
 
-  // Handle round end
   const handleRoundEnd = useCallback(() => {
-    // Send round end message to WebSocket server
     sendWebSocketMessage(socketRef.current, 'round_end', gameState.roomId, {
       gameState
     });
     
     setGameState(prev => {
-      // Reveal the word
       toast.info(`The word was: ${prev.currentWord}`);
       
       if (prev.roundNumber >= prev.totalRounds) {
-        // Game ended
         const winner = [...prev.players].sort((a, b) => b.score - a.score)[0];
         toast.success(`Game Over! ${winner.name} wins with ${winner.score} points!`);
         
-        // Send game end message to WebSocket server
         sendWebSocketMessage(socketRef.current, 'game_end', prev.roomId, {
           gameState: prev
         });
         
         return {
           ...prev,
-          phase: 'game-end',
+          phase: 'game-end' as GamePhase,
           displayWord: prev.currentWord,
         };
       } else {
-        // Prepare for next round
         return {
           ...prev,
-          phase: 'round-end',
+          phase: 'round-end' as GamePhase,
           displayWord: prev.currentWord,
         };
       }
     });
     
-    // Automatically move to next round after delay
     setTimeout(() => {
       setGameState(prev => {
         if (prev.phase === 'round-end') {
           const nextRound = prev.roundNumber + 1;
           
-          // Select next drawer
           const nextDrawerIndex = nextRound % prev.players.length;
           const players = prev.players.map((player, index) => ({
             ...player,
@@ -404,7 +372,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           return {
             ...prev,
-            phase: 'word-selection',
+            phase: 'word-selection' as GamePhase,
             roundNumber: nextRound,
             currentDrawer: players[nextDrawerIndex],
             players,
@@ -417,17 +385,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 5000);
   }, [gameState]);
 
-  // Start the game
   const startGame = useCallback(() => {
-    // Only the host can start the game
     if (gameState.roomId && !gameState.isHost) {
       toast.error("Only the host can start the game");
       return;
     }
-
-    // Need at least 2 players to start
+    
     if (gameState.players.length < 2) {
-      // Add bots if needed
       const botsNeeded = 2 - gameState.players.length;
       if (botsNeeded > 0) {
         const bots: Player[] = [];
@@ -448,7 +412,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     
-    // Randomly select the first drawer
     setGameState(prev => {
       const randomIndex = Math.floor(Math.random() * prev.players.length);
       const updatedPlayers = prev.players.map((player, index) => ({
@@ -464,7 +427,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         roundNumber: 1,
       };
       
-      // Send start game message to WebSocket server
       sendWebSocketMessage(socketRef.current, 'start_game', prev.roomId, {
         gameState: updatedState
       });
@@ -475,17 +437,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     toast.info("Game started! Select a word to draw.");
   }, [gameState.players.length, gameState.roomId, gameState.isHost]);
 
-  // Handle word selection
   const selectWord = useCallback((word: string) => {
     if (gameState.phase !== 'word-selection') return;
     
-    // Create masked display word (show only spaces)
     const displayWord = word
       .split('')
       .map(char => char === ' ' ? ' ' : '_')
       .join('');
     
-    // Send select word message to WebSocket server
     sendWebSocketMessage(socketRef.current, 'select_word', gameState.roomId, {
       word,
       playerId
@@ -502,35 +461,29 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     toast.info("Start drawing! Others will try to guess your word.");
   }, [gameState.phase, gameState.roomId, playerId]);
 
-  // Handle guess submission
   const submitGuess = useCallback((guess: string) => {
     if (gameState.phase !== 'drawing' || isDrawer) return false;
     
     const normalizedGuess = guess.trim().toLowerCase();
     const normalizedWord = gameState.currentWord.toLowerCase();
     
-    // Send guess message to WebSocket server
     sendWebSocketMessage(socketRef.current, 'guess', gameState.roomId, {
       guess: normalizedGuess,
       playerId
     });
     
     if (normalizedGuess === normalizedWord) {
-      // Correct guess - update will come from server
       toast.success("Correct! You guessed the word!");
       return true;
     } else {
-      // Incorrect guess
       toast.error("Incorrect guess, try again!");
       return false;
     }
   }, [gameState.phase, gameState.currentWord, isDrawer, gameState.roomId, playerId]);
 
-  // Update player name
   const updatePlayerName = useCallback((name: string) => {
     if (!name.trim()) return;
     
-    // Send update player name message to WebSocket server
     sendWebSocketMessage(socketRef.current, 'update_player_name', gameState.roomId, {
       playerId,
       name
@@ -546,7 +499,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     toast.success(`Name updated to ${name}!`);
   }, [playerId, gameState.roomId]);
 
-  // Reset game
   const resetGame = useCallback(() => {
     const players = gameState.players.map(player => ({
       ...player,
@@ -554,7 +506,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isDrawing: false
     }));
     
-    // Send reset game message to WebSocket server
     sendWebSocketMessage(socketRef.current, 'reset_game', gameState.roomId, {
       playerId
     });
